@@ -3,7 +3,7 @@ import netifaces
 from progressbar import ProgressBar
 from zeroconf import ServiceInfo
 from connection.base_service import BaseService
-from connection.settings import SERVICE_TYPE_NAME, PORT, CHUNK_MAX_SIZE
+from connection.settings import *
 
 
 class Server(BaseService):
@@ -13,11 +13,11 @@ class Server(BaseService):
         super(Server, self).__init__(identifier)
         desc = {'path': None}
         interface = netifaces.gateways()['default'][netifaces.AF_INET][1]
-        IP = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
+        ip_address = netifaces.ifaddresses(interface)[netifaces.AF_INET][0]['addr']
         info = ServiceInfo(
             SERVICE_TYPE_NAME,
             "%s.%s" % (identifier, SERVICE_TYPE_NAME),
-            socket.inet_aton(IP),
+            socket.inet_aton(ip_address),
             PORT,
             0,
             0,
@@ -27,15 +27,15 @@ class Server(BaseService):
         self.zero_conf.register_service(info)
         print("Service '%s' registered." % info.name)
         sock = socket.socket()
-        sock.bind((IP, PORT))
+        sock.bind((ip_address, PORT))
         sock.listen(1)
         try:
             connection, client_address = sock.accept()
             print('Get file from', client_address[0])
-            file_name_size = self._get_file_name_size(connection)
+            file_name_size = self._get_size(connection, FILE_NAME_SIZE_BYTES_COUNT)
             file_name = self._get_file_name(connection, file_name_size)
             file = open(file_name, "wb")
-            file_size = self._get_file_size(connection)
+            file_size = self._get_size(connection, FILE_SIZE_BYTES_COUNT)
             total_receive_bytes_count = 0
             bar = ProgressBar(maxval=100).start()
             while True:
@@ -46,9 +46,7 @@ class Server(BaseService):
                     break
                 bar.update(total_receive_bytes_count / file_size * 100)
                 file.write(data)
-            file.close()
             print("\nReceiving done.")
-            connection.close()
         except KeyboardInterrupt:
             pass
         finally:
@@ -57,22 +55,13 @@ class Server(BaseService):
             self.zero_conf.close()
 
     @staticmethod
-    def _get_file_size(connection):
+    def _get_size(connection, bytes_read_count):
         data = None
         while True:
-            data = connection.recv(4)
-            if len(data) == 4:
+            data = connection.recv(bytes_read_count)
+            if len(data) == bytes_read_count:
                 break
-        return int(data.hex(), 16)
-
-    @staticmethod
-    def _get_file_name_size(connection):
-        data = None
-        while True:
-            data = connection.recv(1)
-            if len(data) == 1:
-                break
-        return int(data.hex(), 16)
+        return int.from_bytes(data, 'big')
 
     @staticmethod
     def _get_file_name(connection, file_name_size):
@@ -81,4 +70,4 @@ class Server(BaseService):
             data = connection.recv(file_name_size)
             if len(data) == file_name_size:
                 break
-        return data.decode('ascii')
+        return data.decode('utf-8')

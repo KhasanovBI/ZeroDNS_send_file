@@ -4,7 +4,7 @@ import socket
 from progressbar import ProgressBar
 
 from connection.base_service import BaseService
-from connection.settings import SERVICE_TYPE_NAME, SERVICE_SEARCH_TIMEOUT, CHUNK_MAX_SIZE
+from connection.settings import *
 
 
 class Client(BaseService):
@@ -35,10 +35,10 @@ class Client(BaseService):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         sock.connect((self.server_IP, self.server_port))
         file_size = os.stat(file_name).st_size
-        binary_file_name = str.encode(file_name)
-        self._send_bytes(sock, bytes([len(binary_file_name)]))
+        binary_file_name = file_name.encode("utf-8")
+        self._send_bytes(sock, len(binary_file_name).to_bytes(FILE_NAME_SIZE_BYTES_COUNT, 'big'))
         self._send_bytes(sock, binary_file_name)
-        self._send_bytes(sock, file_size.to_bytes(4, 'big'))
+        self._send_bytes(sock, file_size.to_bytes(FILE_SIZE_BYTES_COUNT, 'big'))
         bar = ProgressBar(maxval=100).start()
         total_sent_bytes_count = 0
         with open(file_name, "rb") as f:
@@ -50,3 +50,4 @@ class Client(BaseService):
                 self._send_bytes(sock, chunk)
                 total_sent_bytes_count += chunk_size
                 bar.update(total_sent_bytes_count / file_size * 100)
+        self.zero_conf.close()

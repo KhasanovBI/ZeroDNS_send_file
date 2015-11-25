@@ -30,15 +30,18 @@ class Client(BaseService):
                 raise RuntimeError("Connection error")
             total_sent_bytes_count += sent_bytes_count
 
-    def send_file(self, filename):
-        print("Send %s" % filename)
+    def send_file(self, file_name):
+        print("Send %s" % file_name)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
         sock.connect((self.server_IP, self.server_port))
-        file_size = os.stat(filename).st_size
+        file_size = os.stat(file_name).st_size
+        binary_file_name = str.encode(file_name)
+        self._send_bytes(sock, bytes([len(binary_file_name)]))
+        self._send_bytes(sock, binary_file_name)
         self._send_bytes(sock, file_size.to_bytes(4, 'big'))
         bar = ProgressBar(maxval=100).start()
         total_sent_bytes_count = 0
-        with open(filename, "rb") as f:
+        with open(file_name, "rb") as f:
             while True:
                 chunk = f.read(CHUNK_MAX_SIZE)
                 if not chunk:

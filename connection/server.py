@@ -32,7 +32,8 @@ class Server(BaseService):
         try:
             connection, client_address = sock.accept()
             print('Get file from', client_address[0])
-            file_name = "123123.mp4"  # TODO Send filename later
+            file_name_size = self._get_file_name_size(connection)
+            file_name = self._get_file_name(connection, file_name_size)
             file = open(file_name, "wb")
             file_size = self._get_file_size(connection)
             total_receive_bytes_count = 0
@@ -43,7 +44,7 @@ class Server(BaseService):
                 total_receive_bytes_count += receive_bytes_count
                 if len(data) == 0:
                     break
-                bar.update(round((total_receive_bytes_count / file_size * 100), 2))
+                bar.update(total_receive_bytes_count / file_size * 100)
                 file.write(data)
             file.close()
             print("\nReceiving done.")
@@ -64,5 +65,20 @@ class Server(BaseService):
                 break
         return int(data.hex(), 16)
 
-    def _get_file_name(self, connection):
-        pass
+    @staticmethod
+    def _get_file_name_size(connection):
+        data = None
+        while True:
+            data = connection.recv(1)
+            if len(data) == 1:
+                break
+        return int(data.hex(), 16)
+
+    @staticmethod
+    def _get_file_name(connection, file_name_size):
+        data = None
+        while True:
+            data = connection.recv(file_name_size)
+            if len(data) == file_name_size:
+                break
+        return data.decode('ascii')

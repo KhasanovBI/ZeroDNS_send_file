@@ -1,25 +1,9 @@
 import socket
-
 import netifaces
-
-from tornado.ioloop import IOLoop
-from tornado.tcpserver import TCPServer
+from progressbar import ProgressBar
 from zeroconf import ServiceInfo
-
 from connection.base_service import BaseService
-from connection.settings import SERVICE_TYPE_NAME, PORT
-
-
-class FileGetTCPServer(TCPServer):
-    def handle_stream(self, stream, address):
-        stream.read_bytes(16384, callback=self.on_read_done)
-
-    @staticmethod
-    def on_read_done(data):
-        filename = "1234.mp4"  # TODO Send filename later
-        with open(filename, "ab") as f:
-            f.write(data)
-        # IOLoop.current().stop()
+from connection.settings import SERVICE_TYPE_NAME, PORT, CHUNK_MAX_SIZE
 
 
 class Server(BaseService):
@@ -42,14 +26,43 @@ class Server(BaseService):
         )
         self.zero_conf.register_service(info)
         print("Service '%s' registered." % info.name)
-        server = FileGetTCPServer()
-        server.listen(PORT)
+        sock = socket.socket()
+        sock.bind((IP, PORT))
+        sock.listen(1)
         try:
-            IOLoop.current().start()
+            connection, client_address = sock.accept()
+            print('Get file from', client_address[0])
+            file_name = "123123.mp4"  # TODO Send filename later
+            file = open(file_name, "wb")
+            file_size = self._get_file_size(connection)
+            total_receive_bytes_count = 0
+            bar = ProgressBar(maxval=100).start()
+            while True:
+                data = connection.recv(CHUNK_MAX_SIZE)
+                receive_bytes_count = len(data)
+                total_receive_bytes_count += receive_bytes_count
+                if len(data) == 0:
+                    break
+                bar.update(round((total_receive_bytes_count / file_size * 100), 2))
+                file.write(data)
+            file.close()
+            print("\nReceiving done.")
+            connection.close()
         except KeyboardInterrupt:
             pass
         finally:
-            print("Unregistering service: %s" % info.name)
+            print("Unregistering service: %s." % info.name)
             self.zero_conf.unregister_service(info)
             self.zero_conf.close()
-            server.stop()
+
+    @staticmethod
+    def _get_file_size(connection):
+        data = None
+        while True:
+            data = connection.recv(4)
+            if len(data) == 4:
+                break
+        return int(data.hex(), 16)
+
+    def _get_file_name(self, connection):
+        pass

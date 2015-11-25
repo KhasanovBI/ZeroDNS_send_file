@@ -1,10 +1,10 @@
+import os
 import socket
 
-from tornado.ioloop import IOLoop
-from tornado.iostream import IOStream
+from progressbar import ProgressBar
 
 from connection.base_service import BaseService
-from connection.settings import SERVICE_TYPE_NAME, SERVICE_SEARCH_TIMEOUT
+from connection.settings import SERVICE_TYPE_NAME, SERVICE_SEARCH_TIMEOUT, CHUNK_MAX_SIZE
 
 
 class Client(BaseService):
@@ -21,14 +21,29 @@ class Client(BaseService):
         else:
             raise ConnectionError("Can't find service")
 
-    def send_file(self, filename):
-        def send_request():
-            with open(filename, "rb") as f:
-                self.stream.write(f.read())
-            IOLoop.current().stop()
+    @staticmethod
+    def _send_bytes(sock, message):
+        total_sent_bytes_count = 0
+        while total_sent_bytes_count < len(message):
+            sent_bytes_count = sock.send(message[total_sent_bytes_count:])
+            if sent_bytes_count == 0:
+                raise RuntimeError("Connection error")
+            total_sent_bytes_count += sent_bytes_count
 
+    def send_file(self, filename):
         print("Send %s" % filename)
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
-        self.stream = IOStream(s)
-        self.stream.connect((self.server_IP, self.server_port), send_request)
-        IOLoop.current().start()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+        sock.connect((self.server_IP, self.server_port))
+        file_size = os.stat(filename).st_size
+        self._send_bytes(sock, file_size.to_bytes(4, 'big'))
+        bar = ProgressBar(maxval=100).start()
+        total_sent_bytes_count = 0
+        with open(filename, "rb") as f:
+            while True:
+                chunk = f.read(CHUNK_MAX_SIZE)
+                if not chunk:
+                    break
+                chunk_size = len(chunk)
+                self._send_bytes(sock, chunk)
+                total_sent_bytes_count += chunk_size
+                bar.update(total_sent_bytes_count / file_size * 100)
